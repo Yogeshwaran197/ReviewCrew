@@ -12,54 +12,59 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 if not GITHUB_TOKEN:
     raise ValueError(f"GITHUB_TOKEN not found. Looked in: {ROOT / '.env'}")
 
+    
+class GitHubTools:
 
-async def client():
-
-    client = MultiServerMCPClient({
+    def __init__(self):
+        self.client = MultiServerMCPClient({
         "github": {
             "transport": "http",
             "url": "https://api.githubcopilot.com/mcp/",
             "headers": {"Authorization": f"Bearer {GITHUB_TOKEN}"}
              }
-    })
+        })
+
+        self.tool_map = {}  
 
 
-    tools = await client.get_tools()
+    async def connect(self):
+        tools = await self.client.get_tools()
+        read_tools = {"pull_request_read", "get_file_contents", "search_code"}
+        self.tool_map = {t.name: t for t in tools if t.name in read_tools}
 
-    READ_TOOLS = {"pull_request_read", "get_file_contents", "search_code"}
 
-    tool_map = {t.name : t for t in tools}
+    async def get_pr(self, owner: str, repo: str, pr_number: int, method: str = "get_files"):
+         return await self.tool_map["pull_request_read"].ainvoke({
+            "method": method,
+            "owner": owner,
+            "repo": repo,
+            "pullNumber": pr_number,
+        })
 
-    pull_request_read  = tool_map["pull_request_read"]
-    get_file_content = tool_map["get_file_contents"]
-    search_code = tool_map["search_code"]
+    async def read_file(self, owner: str, repo: str, path: str):
+         return await self.tool_map["get_file_contents"].ainvoke({
+            "owner": owner,
+            "repo": repo,
+            "path": path,
+        })
 
-    file_content = await get_file_content.ainvoke({
-        "owner": "Yogeshwaran197",
-        "repo": "HybridRAG-Agent-Self-Reflective-RAG-with-Reranking-Live-Web-Search",
-        "path": "/"
-    })
-
-    print(f"File Content : {file_content}\n\n")
-
-    pull_request_read = await pull_request_read.ainvoke({
-        "owner": "Yogeshwaran197",
-        "repo": "HybridRAG-Agent-Self-Reflective-RAG-with-Reranking-Live-Web-Search",
-        "method": "get_files",
-        "pullNumber": 1,
-    })
-
-    print(f"PULL Request : {pull_request_read}\n\n")
-
-    search_code = await search_code.ainvoke({
-        "query" : "where is websearch ?"
-    })
-
-    print(f"search_code : {search_code}")
+    async def search_code(self, query: str):
+       return await self.tool_map["search_code"].ainvoke({
+            "query": query,
+        })
 
     
+    async def main():
+        owner = "Yogeshwaran197"
+        repo = "HybridRAG-Agent-Self-Reflective-RAG-with-Reranking-Live-Web-Search"
 
+        gh = GitHubTools()
+        await gh.connect()
+
+        print("FILES:", await gh.read_file(owner, repo, "/"), "\n")
+        print("PR:", await gh.get_pr(owner, repo, 1, "get_files"), "\n")
+        print("SEARCH:", await gh.search_code(f"websearch repo:{owner}/{repo}"))
 
 
 if __name__ == "__main__":
-    asyncio.run(client())
+        asyncio.run(GitHubTools.main())
